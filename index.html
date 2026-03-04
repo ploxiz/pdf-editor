@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PDF Editor</title>
+    <script src="./libs/pdf.min.js"></script>
+    <script src="./libs/pdf-lib.min.js"></script>
+    <style>
+      body {
+        font-family: sans-serif;
+        margin: 0;
+        padding: 10px;
+      }
+      #toolbar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      #pages-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 10px 0;
+      }
+      .page-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        cursor: grab;
+        user-select: none;
+      }
+      .page-card.dragging {
+        opacity: 0.4;
+      }
+      .page-card.drag-over canvas {
+        outline: 2px dashed #000;
+      }
+      .page-card canvas {
+        display: block;
+      }
+      .page-controls {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+      }
+      .page-num {
+        font-size: 12px;
+        min-width: 24px;
+        text-align: center;
+      }
+      #drop-zone {
+        border: 2px dashed #999;
+        padding: 20px;
+        text-align: center;
+        margin-bottom: 10px;
+        cursor: pointer;
+      }
+      #drop-zone.over {
+        background: #eee;
+      }
+      #status {
+        font-size: 13px;
+        color: #555;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="drop-zone">
+      Drop PDF/image files here or
+      <button onclick="document.getElementById('file-input').click()">
+        Browse
+      </button>
+      <input
+        type="file"
+        id="file-input"
+        multiple
+        accept=".pdf,image/*"
+        style="display: none"
+      />
+    </div>
+
+    <div id="toolbar">
+      <button onclick="exportPDF()">⬇ Export PDF</button>
+      <span id="status"></span>
+    </div>
+
+    <div id="pages-container"></div>
+
+    <script>
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "./libs/pdf.worker.min.js";
+
+      // Each entry: { type: 'pdf-page', pdfBytes, pageIndex, rotation }
+      //           | { type: 'image', dataUrl, rotation }
+      let pages = [];
+      let dragSrcIdx = null;
+
+      const container = document.getElementById("pages-container");
+      const status = document.getElementById("status");
+      const THUMB_H = 200;
+
+      // ── File input / drop ──────────────────────────────────────────────────────
+      const dropZone = document.getElementById("drop-zone");
+      const fileInput = document.getElementById("file-input");
+
+      dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("over");
+      });
+      dropZone.addEventListener("dragleave", () =>
+        dropZone.classList.remove("over"),
+      );
+      dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("over");
+        handleFiles(e.dataTransfer.files);
+      });
+      fileInput.addEventListener("change", (e) => handleFiles(e.target.files));
+
+      async function handleFiles(files) {
+        for (const file of files) {
+          if (file.type === "application/pdf") {
+            await loadPDF(file);
+          } else if (file.type.startsWith("image/")) {
+            await loadImage(file);
+          }
+        }
+        renderAll();
+      }
+
+      async function loadPDF(file) {
+        setStatus("Loading " + file.name + "…");
+        const ab = await file.arrayBuffer();
+        const pdfBytes = new Uint8Array(ab);
+        const pdf = await pdfjsLib.getDocument({ data: pdfBytes.slice() })
+          .promise;
+        for (let i = 0; i < pdf.numPages; i++) {
+          pages.push({
+            type: "pdf-page",
+            pdfBytes,
+            pageIndex: i,
+            rotation: 0,
+            _pdfDoc: pdf,
+          });
+        }
+        setStatus("");
+      }
+
+      async function loadImage(file) {
+        const raw = await fileToDataUrl(file);
+        const dataUrl = await normalizeImageToPng(raw);
+        pages.push({ type: "image", dataUrl, rotation: 0 });
+      }
+
+      function fileToDataUrl(file) {
+        return new Promise((res) => {
+          const r = new FileReader();
+          r.onload = (e) => res(e.target.result);
+          r.readAsDataURL(file);
+        });
+      }
+
+      // Bake rotation into a new PNG via canvas
+      function getRotatedPng(dataUrl, rot) {
+        return new Promise((res) => {
+          const img = new Image();
+          img.onload = () => {
+            const swapped = rot === 90 || rot === 270;
+            const cw = swapped ? img.height : img.width;
+            const ch = swapped ? img.width : img.height;
+            const c = document.createElement("canvas");
+            c.width = cw;
+            c.height = ch;
+            const ctx = c.getContext("2d");
+            ctx.translate(cw / 2, ch / 2);
+            ctx.rotate((rot * Math.PI) / 180);
+            ctx.drawImage(img, -img.width / 2, -img.height / 2);
+            res(c.toDataURL("image/png"));
+          };
+          img.src = dataUrl;
+        });
+      }
+
+      function normalizeImageToPng(dataUrl) {
+        return new Promise((res) => {
+          const img = new Image();
+          img.onload = () => {
+            const c = document.createElement("canvas");
+            c.width = img.width;
+            c.height = img.height;
+            c.getContext("2d").drawImage(img, 0, 0);
+            res(c.toDataURL("image/png"));
+          };
+          img.src = dataUrl;
+        });
+      }
+
+      // ── Rendering ──────────────────────────────────────────────────────────────
+      async function renderAll() {
+        container.innerHTML = "";
+        for (let i = 0; i < pages.length; i++) {
+          const card = await buildCard(i);
+          container.appendChild(card);
+        }
+      }
+
+      async function buildCard(idx) {
+        const p = pages[idx];
+        const card = document.createElement("div");
+        card.className = "page-card";
+        card.draggable = true;
+        card.dataset.idx = idx;
+
+        const canvas = document.createElement("canvas");
+        await drawPage(canvas, p);
+
+        // Drag events
+        card.addEventListener("dragstart", (e) => {
+          dragSrcIdx = idx;
+          card.classList.add("dragging");
+          e.dataTransfer.effectAllowed = "move";
+        });
+        card.addEventListener("dragend", () =>
+          card.classList.remove("dragging"),
+        );
+        card.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          card.classList.add("drag-over");
+        });
+        card.addEventListener("dragleave", () =>
+          card.classList.remove("drag-over"),
+        );
+        card.addEventListener("drop", (e) => {
+          e.preventDefault();
+          card.classList.remove("drag-over");
+          if (dragSrcIdx !== null && dragSrcIdx !== idx) {
+            const moved = pages.splice(dragSrcIdx, 1)[0];
+            pages.splice(idx, 0, moved);
+            dragSrcIdx = null;
+            renderAll();
+          }
+        });
+
+        // Controls
+        const controls = document.createElement("div");
+        controls.className = "page-controls";
+
+        const btnRotL = document.createElement("button");
+        btnRotL.textContent = "↺";
+        btnRotL.title = "Rotate left";
+        btnRotL.onclick = () => {
+          p.rotation = (p.rotation - 90 + 360) % 360;
+          drawPage(canvas, p);
+        };
+
+        const btnRotR = document.createElement("button");
+        btnRotR.textContent = "↻";
+        btnRotR.title = "Rotate right";
+        btnRotR.onclick = () => {
+          p.rotation = (p.rotation + 90) % 360;
+          drawPage(canvas, p);
+        };
+
+        const pageNum = document.createElement("span");
+        pageNum.className = "page-num";
+        pageNum.textContent = idx + 1;
+
+        const btnDel = document.createElement("button");
+        btnDel.textContent = "🗑";
+        btnDel.title = "Delete page";
+        btnDel.onclick = () => {
+          pages.splice(idx, 1);
+          renderAll();
+        };
+
+        controls.append(btnRotL, btnRotR, pageNum, btnDel);
+        card.append(canvas, controls);
+        return card;
+      }
+
+      // A4 proportions: 210x297mm → ratio 1:√2
+      const A4_W = 595,
+        A4_H = 842; // pts, standard A4
+
+      async function drawPage(canvas, p) {
+        const rot = p.rotation;
+        if (p.type === "pdf-page") {
+          const page = await p._pdfDoc.getPage(p.pageIndex + 1);
+          const baseVp = page.getViewport({ scale: 1, rotation: rot });
+          const scale = THUMB_H / baseVp.height;
+          const vp = page.getViewport({ scale, rotation: rot });
+          canvas.width = vp.width;
+          canvas.height = vp.height;
+          const ctx = canvas.getContext("2d");
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        } else {
+          await drawImageOnA4Canvas(canvas, p.dataUrl, rot);
+        }
+      }
+
+      function drawImageOnA4Canvas(canvas, dataUrl, rot) {
+        return new Promise((res) => {
+          const img = new Image();
+          img.onload = () => {
+            // Thumbnail scale: A4 at THUMB_H tall
+            const thumbScale = THUMB_H / A4_H;
+            const cw = A4_W * thumbScale;
+            const ch = A4_H * thumbScale;
+            canvas.width = cw;
+            canvas.height = ch;
+
+            const ctx = canvas.getContext("2d");
+            ctx.fillStyle = "#fff";
+            ctx.fillRect(0, 0, cw, ch);
+
+            // Fit rotated image inside A4 bounds
+            const swapped = rot === 90 || rot === 270;
+            const fitW = swapped ? ch : cw; // available space for the image's natural axis
+            const fitH = swapped ? cw : ch;
+            const s = Math.min(fitW / img.width, fitH / img.height);
+            const dw = img.width * s;
+            const dh = img.height * s;
+
+            ctx.save();
+            ctx.translate(cw / 2, ch / 2);
+            ctx.rotate((rot * Math.PI) / 180);
+            ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
+            ctx.restore();
+            res();
+          };
+          img.src = dataUrl;
+        });
+      }
+
+      // ── Export ─────────────────────────────────────────────────────────────────
+      async function exportPDF() {
+        if (!pages.length) {
+          alert("No pages to export.");
+          return;
+        }
+        setStatus("Building PDF…");
+        const { PDFDocument, degrees } = PDFLib;
+        const outDoc = await PDFDocument.create();
+
+        for (const p of pages) {
+          if (p.type === "pdf-page") {
+            const srcDoc = await PDFDocument.load(p.pdfBytes);
+            const [copied] = await outDoc.copyPages(srcDoc, [p.pageIndex]);
+            // Apply rotation delta
+            const existingRot = copied.getRotation().angle;
+            copied.setRotation(degrees((existingRot + p.rotation) % 360));
+            outDoc.addPage(copied);
+          } else {
+            // Image page: A4-ish, centered
+            let embeddedImg; // declared below after rotation bake-in
+            // Pre-rotate image via canvas so we always draw unrotated into pdf-lib
+            const rot = p.rotation;
+            const rotatedPng = await getRotatedPng(p.dataUrl, rot);
+            const rotatedData = rotatedPng.split(",")[1];
+            const rotatedImg = await outDoc.embedPng(
+              Uint8Array.from(atob(rotatedData), (c) => c.charCodeAt(0)),
+            );
+            const s = Math.min(
+              A4_W / rotatedImg.width,
+              A4_H / rotatedImg.height,
+            );
+            const dw = rotatedImg.width * s;
+            const dh = rotatedImg.height * s;
+
+            const page = outDoc.addPage([A4_W, A4_H]);
+            page.drawImage(rotatedImg, {
+              x: (A4_W - dw) / 2,
+              y: (A4_H - dh) / 2,
+              width: dw,
+              height: dh,
+            });
+          }
+        }
+
+        const bytes = await outDoc.save();
+        const blob = new Blob([bytes], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "output.pdf";
+        a.click();
+        URL.revokeObjectURL(url);
+        setStatus("Done!");
+        setTimeout(() => setStatus(""), 2000);
+      }
+
+      function setStatus(msg) {
+        status.textContent = msg;
+      }
+    </script>
+  </body>
+</html>
