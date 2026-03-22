@@ -1,94 +1,251 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ro">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PDF Editor</title>
+    <title>Editor PDF</title>
     <script src="./libs/pdf.min.js"></script>
     <script src="./libs/pdf-lib.min.js"></script>
     <style>
-      body {
-        font-family: sans-serif;
-        margin: 0;
-        padding: 10px;
+      * {
+        box-sizing: border-box;
       }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+          'Ubuntu', 'Cantarell', sans-serif;
+        margin: 0;
+        padding: 0;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        min-height: 100vh;
+      }
+
+      main {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 12px 20px;
+      }
+
+
+
+      button {
+        font-family: inherit;
+        border: none;
+        border-radius: 6px;
+        padding: 10px 16px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      button svg {
+        width: 16px;
+        height: 16px;
+        flex-shrink: 0;
+      }
+
+      button:hover:not(:disabled) {
+        filter: brightness(0.9);
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      #drop-zone {
+        background: white;
+        border: 2px dashed #3498db;
+        border-radius: 12px;
+        padding: 32px 24px;
+        text-align: center; 
+        margin-bottom: 32px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      }
+
+      #drop-zone:hover {
+        border-color: #2980b9;
+        background: #f9fbfd;
+      }
+
+      #drop-zone.over {
+        background: #ebf5fb;
+        border-color: #2980b9;
+        box-shadow: 0 4px 16px rgba(52, 152, 219, 0.15);
+      }
+
+      #drop-zone button {
+        background: #3498db;
+        color: white;
+        padding: 12px 24px;
+        font-size: 15px;
+        border-radius: 8px;
+        margin-bottom: 12px;
+      }
+
+      #drop-zone button:hover {
+        background: #2980b9;
+      }
+
+      #drop-zone p {
+        color: #7f8c8d;
+        margin: 12px 0 0 0;
+        font-size: 13px;
+      }
+
       #toolbar {
         display: flex;
-        gap: 8px;
+        gap: 12px;
         align-items: center;
         flex-wrap: wrap;
-        margin-bottom: 10px;
+        margin-bottom: 32px;
       }
+
+      #export-btn {
+        background: #27ae60;
+        color: white;
+        padding: 11px 20px;
+        font-size: 14px;
+        border-radius: 8px;
+        font-weight: 600;
+      }
+
+      #export-btn:hover:not(:disabled) {
+        background: #229954;
+      }
+
+      #export-btn:disabled {
+        background: #bdc3c7;
+        cursor: not-allowed;
+        opacity: 1;
+      }
+
+      #status {
+        font-size: 13px;
+        color: #7f8c8d;
+        font-weight: 500;
+      }
+
       #pages-container {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        padding: 10px 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 20px;
       }
+
       .page-card {
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 4px;
+        gap: 10px;
         cursor: grab;
         user-select: none;
+        background: white;
+        border-radius: 12px;
+        padding: 10px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        transition: box-shadow 0.2s ease;
       }
+
+      .page-card:hover {
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+      }
+
       .page-card.dragging {
-        opacity: 0.4;
+        opacity: 0.5;
+        box-shadow: 0 8px 24px rgba(52, 152, 219, 0.3);
       }
+
+      .page-card.drag-over {
+        background: #ebf5fb;
+        border: 2px solid #3498db;
+      }
+
       .page-card.drag-over canvas {
-        outline: 2px dashed #000;
+        outline: none;
       }
+
       .page-card canvas {
         display: block;
+        border-radius: 8px;
+        background: #ecf0f1;
+        max-width: 100%;
+        height: auto;
       }
+
       .page-controls {
         display: flex;
         gap: 4px;
         align-items: center;
+        width: 100%;
+        justify-content: center;
       }
+
+      .page-controls button {
+        flex: 1;
+        padding: 6px 6px;
+        font-size: 13px;
+        background: #ecf0f1;
+        color: #2c3e50;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .page-controls button.btn-delete {
+        background: #fadbd8;
+        color: #c0392b;
+      }
+
+      .page-controls button.btn-delete:hover {
+        background: #f5b7b1;
+        color: #a93226;
+      }
+
+      .page-controls button:not(.btn-delete):hover {
+        background: #d5dbdb;
+        color: #1a252f;
+      }
+
       .page-num {
         font-size: 12px;
-        min-width: 24px;
+        font-weight: 600;
+        color: #34495e;
         text-align: center;
       }
-      #drop-zone {
-        border: 2px dashed #999;
-        padding: 20px;
-        text-align: center;
-        margin-bottom: 10px;
-        cursor: pointer;
-      }
-      #drop-zone.over {
-        background: #eee;
-      }
-      #status {
-        font-size: 13px;
-        color: #555;
+
+      #file-input {
+        display: none;
       }
     </style>
   </head>
   <body>
-    <div id="drop-zone">
-      Drop PDF/image files here or
-      <button onclick="document.getElementById('file-input').click()">
-        Browse
-      </button>
-      <input
-        type="file"
-        id="file-input"
-        multiple
-        accept=".pdf,image/*"
-        style="display: none"
-      />
-    </div>
+    <main>
+      <div id="drop-zone">
+        <button onclick="document.getElementById('file-input').click()">
+          Selectează PDF-uri sau imagini
+        </button>
+        <input
+          type="file"
+          id="file-input"
+          multiple
+          accept=".pdf,image/*"
+        />
+      </div>
 
-    <div id="toolbar">
-      <button onclick="exportPDF()">⬇ Export PDF</button>
-      <span id="status"></span>
-    </div>
+      <div id="toolbar">
+        <button id="export-btn" onclick="exportPDF()" disabled>Descarcă PDF</button>
+        <span id="status"></span>
+      </div>
 
-    <div id="pages-container"></div>
+      <div id="pages-container"></div>
+    </main>
 
     <script>
       pdfjsLib.GlobalWorkerOptions.workerSrc = "./libs/pdf.worker.min.js";
@@ -100,6 +257,7 @@
 
       const container = document.getElementById("pages-container");
       const status = document.getElementById("status");
+      const exportBtn = document.getElementById("export-btn");
       const THUMB_H = 200;
 
       // ── File input / drop ──────────────────────────────────────────────────────
@@ -132,17 +290,20 @@
       }
 
       async function loadPDF(file) {
-        setStatus("Loading " + file.name + "…");
+        setStatus("Se încarcă " + file.name + "…");
         const ab = await file.arrayBuffer();
         const pdfBytes = new Uint8Array(ab);
         const pdf = await pdfjsLib.getDocument({ data: pdfBytes.slice() })
           .promise;
         for (let i = 0; i < pdf.numPages; i++) {
+          const page = await pdf.getPage(i + 1);
+          const pageRotation = page.rotate || 0;
           pages.push({
             type: "pdf-page",
             pdfBytes,
             pageIndex: i,
             rotation: 0,
+            _pageRotation: pageRotation,
             _pdfDoc: pdf,
           });
         }
@@ -205,6 +366,8 @@
           const card = await buildCard(i);
           container.appendChild(card);
         }
+        // Show export button only if there are pages
+        exportBtn.disabled = pages.length > 0 ? false : true;
       }
 
       async function buildCard(idx) {
@@ -249,35 +412,61 @@
         controls.className = "page-controls";
 
         const btnRotL = document.createElement("button");
-        btnRotL.textContent = "↺";
-        btnRotL.title = "Rotate left";
+        btnRotL.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 5"></path><path d="M3 3v6h6"></path></svg>';
+        btnRotL.title = "Rotire la stânga";
         btnRotL.onclick = () => {
           p.rotation = (p.rotation - 90 + 360) % 360;
           drawPage(canvas, p);
         };
 
         const btnRotR = document.createElement("button");
-        btnRotR.textContent = "↻";
-        btnRotR.title = "Rotate right";
+        btnRotR.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 5"></path><path d="M21 3v6h-6"></path></svg>';
+        btnRotR.title = "Rotire la dreapta";
         btnRotR.onclick = () => {
           p.rotation = (p.rotation + 90) % 360;
           drawPage(canvas, p);
         };
 
-        const pageNum = document.createElement("span");
-        pageNum.className = "page-num";
-        pageNum.textContent = idx + 1;
+        const btnMovL = document.createElement("button");
+        btnMovL.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 12l8-8v5h6v6h-6v5l-8-8z"></path></svg>';
+        btnMovL.title = "Mută stânga";
+        btnMovL.disabled = idx === 0;
+        btnMovL.onclick = () => {
+          if (idx > 0) {
+            const moved = pages.splice(idx, 1)[0];
+            pages.splice(idx - 1, 0, moved);
+            renderAll();
+          }
+        };
+
+        const btnMovR = document.createElement("button");
+        btnMovR.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M16 12l-8-8v5H2v6h6v5l8-8z"></path></svg>';
+        btnMovR.title = "Mută dreapta";
+        btnMovR.disabled = idx === pages.length - 1;
+        btnMovR.onclick = () => {
+          if (idx < pages.length - 1) {
+            const moved = pages.splice(idx, 1)[0];
+            pages.splice(idx + 1, 0, moved);
+            renderAll();
+          }
+        };
 
         const btnDel = document.createElement("button");
-        btnDel.textContent = "🗑";
-        btnDel.title = "Delete page";
+        btnDel.className = "btn-delete";
+        btnDel.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>';
+        btnDel.title = "Șterge pagina";
         btnDel.onclick = () => {
           pages.splice(idx, 1);
           renderAll();
         };
 
-        controls.append(btnRotL, btnRotR, pageNum, btnDel);
-        card.append(canvas, controls);
+        controls.append(btnRotL, btnRotR, btnMovL, btnMovR, btnDel);
+        
+        const pageNum = document.createElement("div");
+        pageNum.className = "page-num";
+        pageNum.textContent = idx + 1;
+
+        card.append(canvas, controls, pageNum);
         return card;
       }
 
@@ -289,9 +478,11 @@
         const rot = p.rotation;
         if (p.type === "pdf-page") {
           const page = await p._pdfDoc.getPage(p.pageIndex + 1);
-          const baseVp = page.getViewport({ scale: 1, rotation: rot });
+          const pageRotation = p._pageRotation || 0;
+          const totalRotation = (pageRotation + rot) % 360;
+          const baseVp = page.getViewport({ scale: 1, rotation: totalRotation });
           const scale = THUMB_H / baseVp.height;
-          const vp = page.getViewport({ scale, rotation: rot });
+          const vp = page.getViewport({ scale, rotation: totalRotation });
           canvas.width = vp.width;
           canvas.height = vp.height;
           const ctx = canvas.getContext("2d");
@@ -339,10 +530,10 @@
       // ── Export ─────────────────────────────────────────────────────────────────
       async function exportPDF() {
         if (!pages.length) {
-          alert("No pages to export.");
+          alert("Nicio pagină de exportat.");
           return;
         }
-        setStatus("Building PDF…");
+        setStatus("Se construiește PDF…");
         const { PDFDocument, degrees } = PDFLib;
         const outDoc = await PDFDocument.create();
 
@@ -386,10 +577,10 @@
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = "output.pdf";
+        a.download = "rezultat.pdf";
         a.click();
         URL.revokeObjectURL(url);
-        setStatus("Done!");
+        setStatus("Gata!");
         setTimeout(() => setStatus(""), 2000);
       }
 
@@ -397,5 +588,6 @@
         status.textContent = msg;
       }
     </script>
+    </main>
   </body>
 </html>
